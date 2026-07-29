@@ -47,8 +47,25 @@ app.mount("/media", StaticFiles(directory="media"), name="media")
 @app.get("/")
 def serve_frontend():
     """Serve il frontend HTML alla root."""
-    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
-    return FileResponse(frontend_path)
+    # Prova diversi path per trovare il frontend
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "index.html"),
+        os.path.join(os.getcwd(), "frontend", "index.html"),
+        "/opt/render/project/src/frontend/index.html",
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            return FileResponse(path)
+
+    # Se non trova il file, restituisci un messaggio di debug
+    return {
+        "error": "frontend/index.html not found",
+        "cwd": os.getcwd(),
+        "files_in_cwd": os.listdir(os.getcwd()) if os.path.exists(os.getcwd()) else "N/A",
+        "tried_paths": possible_paths,
+    }
 
 
 # --- Startup / Shutdown ---
