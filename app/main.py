@@ -7,7 +7,7 @@ import os
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db, engine, Base
@@ -45,6 +45,7 @@ app.mount("/media", StaticFiles(directory="media"), name="media")
 # --- Root: serve frontend ---
 
 @app.get("/")
+@app.head("/")  # Supporta HEAD per Render health check
 def serve_frontend():
     """Serve il frontend HTML alla root."""
     # Prova diversi path per trovare il frontend
@@ -59,13 +60,31 @@ def serve_frontend():
         if os.path.exists(path):
             return FileResponse(path)
 
-    # Se non trova il file, restituisci un messaggio di debug
-    return {
-        "error": "frontend/index.html not found",
-        "cwd": os.getcwd(),
-        "files_in_cwd": os.listdir(os.getcwd()) if os.path.exists(os.getcwd()) else "N/A",
-        "tried_paths": possible_paths,
-    }
+    # Se non trova il file, restituisci HTML di debug
+    cwd = os.getcwd()
+    files = ""
+    try:
+        files = str(os.listdir(cwd))
+    except:
+        files = "N/A"
+
+    html_debug = f"""
+    <html>
+    <head><title>Pulse - Debug</title></head>
+    <body>
+        <h1>Pulse - Frontend Not Found</h1>
+        <p><strong>CWD:</strong> {cwd}</p>
+        <p><strong>Files in CWD:</strong> {files}</p>
+        <p><strong>Tried paths:</strong></p>
+        <ul>
+    """
+    for p in possible_paths:
+        exists = "EXISTS" if os.path.exists(p) else "NOT FOUND"
+        html_debug += f"<li>{exists}: {p}</li>"
+
+    html_debug += "</ul></body></html>"
+
+    return HTMLResponse(content=html_debug, status_code=404)
 
 
 # --- Startup / Shutdown ---
