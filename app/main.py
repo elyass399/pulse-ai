@@ -4,11 +4,13 @@ Espone REST API per il frontend.
 """
 
 import os
+from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db, engine, Base
 from app.models import Briefing, UserPreference
@@ -50,15 +52,10 @@ def _find_frontend():
     current_dir = os.path.dirname(current_file)
 
     possible_paths = [
-        # Path relativo a app/main.py (../frontend/index.html)
         os.path.join(current_dir, "..", "frontend", "index.html"),
-        # Path relativo a app/main.py (../../frontend/index.html)
         os.path.join(current_dir, "..", "..", "frontend", "index.html"),
-        # Path assoluto dalla working directory
         os.path.join(os.getcwd(), "frontend", "index.html"),
-        # Path tipico Render
         "/opt/render/project/src/frontend/index.html",
-        # Path alternativo Render
         "/opt/render/project/frontend/index.html",
     ]
 
@@ -82,7 +79,6 @@ def serve_frontend():
     if frontend_path:
         return FileResponse(frontend_path)
 
-    # Debug: mostra tutti i path provati
     cwd = os.getcwd()
     files_in_cwd = []
     try:
@@ -145,8 +141,6 @@ def health_check():
 
 @app.get("/briefing/latest", response_model=list[BriefingOut])
 def get_latest_briefing(db: Session = Depends(get_db)):
-    from sqlalchemy import func
-
     latest_run = db.query(func.max(Briefing.created_at)).scalar()
 
     if not latest_run:
@@ -177,7 +171,24 @@ def get_briefing_history(
 
 
 @app.post("/briefing/generate")
-def generate_new_briefing():
+def generate_new_briefing(db: Session = Depends(get_db)):
+    """Genera briefing solo se non esistono gia per oggi."""
+    today = datetime.now().date()
+    today_briefings = db.query(Briefing).filter(
+        func.date(Briefing.created_at) == today
+    ).count()
+
+    if today_briefings > 0:
+        briefings = db.query(Briefing).filter(
+            func.date(Briefing.created_at) == today
+        ).order_by(Briefing.field, Briefing.is_trending.desc()).all()
+
+        return {
+            "status": "already_generated",
+            "message": f"Today's briefing already exists ({len(briefings)} stories)",
+            "data": briefings
+        }
+
     try:
         briefing = generate_briefing()
         return {

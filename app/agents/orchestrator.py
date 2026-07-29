@@ -3,6 +3,7 @@ Orchestrator: coordina i Field Agent e genera il briefing finale.
 Salva i risultati nel database con validazione dei campi obbligatori.
 """
 
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from app.agents.field_agent import FieldAgent
@@ -49,6 +50,9 @@ def generate_briefing() -> List[Dict[str, Any]]:
                 text=raw_text,
                 field=field
             )
+
+            # Delay per evitare rate limit
+            time.sleep(0.5)
 
             summary = llm_result.get("summary", "").strip()
             why_matters = llm_result.get("why_matters", "").strip()
