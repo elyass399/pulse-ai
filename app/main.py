@@ -44,45 +44,79 @@ app.mount("/media", StaticFiles(directory="media"), name="media")
 
 # --- Root: serve frontend ---
 
-@app.get("/")
-@app.head("/")  # Supporta HEAD per Render health check
-def serve_frontend():
-    """Serve il frontend HTML alla root."""
-    # Prova diversi path per trovare il frontend
+def _find_frontend():
+    """Trova il file frontend/index.html in vari path possibili."""
+    current_file = os.path.abspath(__file__)
+    current_dir = os.path.dirname(current_file)
+
     possible_paths = [
-        os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "index.html"),
+        # Path relativo a app/main.py (../frontend/index.html)
+        os.path.join(current_dir, "..", "frontend", "index.html"),
+        # Path relativo a app/main.py (../../frontend/index.html)
+        os.path.join(current_dir, "..", "..", "frontend", "index.html"),
+        # Path assoluto dalla working directory
         os.path.join(os.getcwd(), "frontend", "index.html"),
+        # Path tipico Render
         "/opt/render/project/src/frontend/index.html",
+        # Path alternativo Render
+        "/opt/render/project/frontend/index.html",
     ]
 
+    results = []
     for path in possible_paths:
-        if os.path.exists(path):
-            return FileResponse(path)
+        abs_path = os.path.abspath(path)
+        exists = os.path.exists(abs_path)
+        results.append({"path": abs_path, "exists": exists})
+        if exists:
+            return abs_path, results
 
-    # Se non trova il file, restituisci HTML di debug
+    return None, results
+
+
+@app.get("/")
+@app.head("/")
+def serve_frontend():
+    """Serve il frontend HTML alla root."""
+    frontend_path, debug_info = _find_frontend()
+
+    if frontend_path:
+        return FileResponse(frontend_path)
+
+    # Debug: mostra tutti i path provati
     cwd = os.getcwd()
-    files = ""
+    files_in_cwd = []
     try:
-        files = str(os.listdir(cwd))
+        files_in_cwd = os.listdir(cwd)
     except:
-        files = "N/A"
+        pass
 
-    html_debug = f"""
-    <html>
-    <head><title>Pulse - Debug</title></head>
-    <body>
-        <h1>Pulse - Frontend Not Found</h1>
-        <p><strong>CWD:</strong> {cwd}</p>
-        <p><strong>Files in CWD:</strong> {files}</p>
-        <p><strong>Tried paths:</strong></p>
-        <ul>
+    html_debug = f"""<!DOCTYPE html>
+<html>
+<head><title>Pulse - Debug</title></head>
+<body style="font-family: monospace; padding: 20px;">
+    <h1>Pulse - Frontend Not Found</h1>
+    <h2>CWD: {cwd}</h2>
+    <h3>Files in CWD:</h3>
+    <ul>
     """
-    for p in possible_paths:
-        exists = "EXISTS" if os.path.exists(p) else "NOT FOUND"
-        html_debug += f"<li>{exists}: {p}</li>"
+    for f in files_in_cwd:
+        html_debug += f"<li>{f}</li>"
 
-    html_debug += "</ul></body></html>"
+    html_debug += """
+    </ul>
+    <h3>Paths tried:</h3>
+    <table border="1" cellpadding="5">
+        <tr><th>Path</th><th>Exists</th></tr>
+    """
+    for info in debug_info:
+        status = "YES" if info["exists"] else "NO"
+        html_debug += f"<tr><td>{info['path']}</td><td>{status}</td></tr>"
+
+    html_debug += """
+    </table>
+</body>
+</html>
+    """
 
     return HTMLResponse(content=html_debug, status_code=404)
 
