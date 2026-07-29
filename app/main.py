@@ -3,9 +3,11 @@ Pulse - FastAPI Backend
 Espone REST API per il frontend.
 """
 
+import os
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db, engine, Base
@@ -38,6 +40,15 @@ app.add_middleware(
 
 # Serve cartella media per immagini fallback
 app.mount("/media", StaticFiles(directory="media"), name="media")
+
+
+# --- Root: serve frontend ---
+
+@app.get("/")
+def serve_frontend():
+    """Serve il frontend HTML alla root."""
+    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
+    return FileResponse(frontend_path)
 
 
 # --- Startup / Shutdown ---
