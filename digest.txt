@@ -1,0 +1,1949 @@
+Directory structure:
+└── pulse-ai/
+    ├── check.py
+    ├── init_db.py
+    ├── requirements.txt
+    ├── test.py
+    ├── test_mcp.py
+    ├── app/
+    │   ├── config.py
+    │   ├── database.py
+    │   ├── llm_client.py
+    │   ├── main.py
+    │   ├── models.py
+    │   ├── scheduler.py
+    │   ├── schemas.py
+    │   ├── agents/
+    │   │   ├── __init__.py
+    │   │   ├── field_agent.py
+    │   │   └── orchestrator.py
+    │   └── mcp/
+    │       ├── __init__.py
+    │       ├── client.py
+    │       ├── rss_server.py
+    │       └── web_server.py
+    └── frontend/
+        └── index.html
+
+================================================
+FILE: check.py
+================================================
+#!/usr/bin/env python3
+"""
+Test script per verificare che tutte le librerie di Pulse siano installate correttamente.
+"""
+
+import sys
+
+def test_import(name, import_path=None):
+    """Prova a importare un modulo e stampa il risultato."""
+    if import_path is None:
+        import_path = name
+    try:
+        module = __import__(import_path)
+        version = getattr(module, "__version__", "N/A")
+        print(f"  ✅ {name:<25} v{version}")
+        return True
+    except ImportError as e:
+        print(f"  ❌ {name:<25} ERRORE: {e}")
+        return False
+    except Exception as e:
+        print(f"  ⚠️  {name:<25} IMPORT OK ma ERRORE: {e}")
+        return True
+
+def main():
+    print("=" * 60)
+    print("  PULSE — Test Import Librerie")
+    print("=" * 60)
+
+    results = []
+
+    # --- API / runtime ---
+    print("\n📡 API / Runtime:")
+    results.append(test_import("fastapi"))
+    results.append(test_import("uvicorn"))
+    results.append(test_import("python-multipart", "multipart"))
+
+    # --- Config / schemi ---
+    print("\n⚙️  Config / Schemi:")
+    results.append(test_import("pydantic"))
+    results.append(test_import("pydantic-settings", "pydantic_settings"))
+    results.append(test_import("python-dotenv", "dotenv"))
+
+    # --- LLM ---
+    print("\n🤖 LLM:")
+    results.append(test_import("openai"))
+    results.append(test_import("tenacity"))
+
+    # --- Agent Framework ---
+    print("\n🧠 Agent Framework:")
+    results.append(test_import("langgraph"))
+    results.append(test_import("langchain"))
+    results.append(test_import("langchain-core", "langchain_core"))
+
+    # --- MCP Protocol ---
+    print("\n🔌 MCP Protocol:")
+    results.append(test_import("mcp"))
+
+    # --- Database ---
+    print("\n🗄️  Database:")
+    results.append(test_import("sqlalchemy"))
+    results.append(test_import("alembic"))
+    results.append(test_import("aiosqlite"))
+
+    # --- Web Scraping & RSS ---
+    print("\n🌐 Web Scraping & RSS:")
+    results.append(test_import("feedparser"))
+    results.append(test_import("requests"))
+    results.append(test_import("beautifulsoup4", "bs4"))
+    results.append(test_import("lxml"))
+
+    # --- Async & HTTP ---
+    print("\n⚡ Async & HTTP:")
+    results.append(test_import("httpx"))
+    results.append(test_import("aiohttp"))
+
+    # --- Scheduler ---
+    print("\n⏰ Scheduler:")
+    results.append(test_import("apscheduler"))
+
+    # --- Utilities ---
+    print("\n🛠️  Utilities:")
+    results.append(test_import("python-dateutil", "dateutil"))
+    results.append(test_import("pytz"))
+    results.append(test_import("numpy"))
+
+    # --- Dev & Testing ---
+    print("\n🧪 Dev & Testing:")
+    results.append(test_import("pytest"))
+    results.append(test_import("pytest-asyncio", "pytest_asyncio"))
+    results.append(test_import("black"))
+    results.append(test_import("isort"))
+
+    # --- Riassunto ---
+    print("\n" + "=" * 60)
+    total = len(results)
+    passed = sum(results)
+    failed = total - passed
+
+    print(f"  Totale:  {total}")
+    print(f"  ✅ OK:    {passed}")
+    print(f"  ❌ FAIL:  {failed}")
+
+    if failed == 0:
+        print("\n  🎉 TUTTE LE LIBRERIE SONO INSTALLATE CORRETTAMENTE!")
+    else:
+        print(f"\n  ⚠️  {failed} librerie mancanti. Installale con: pip install -r requirements.txt")
+
+    print("=" * 60)
+
+    return 0 if failed == 0 else 1
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+
+================================================
+FILE: init_db.py
+================================================
+#!/usr/bin/env python3
+"""
+Inizializza il database Pulse.
+"""
+
+from app.database import engine, Base
+
+# ðŸ”´ CRITICO: importa i modelli PRIMA di create_all()
+# altrimenti SQLAlchemy non sa quali tabelle creare
+from app.models import Briefing, UserPreference  # noqa: F401
+
+Base.metadata.create_all(bind=engine)
+
+print("âœ… Database e tabelle create con successo!")
+
+
+================================================
+FILE: requirements.txt
+================================================
+# --- API / runtime ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# --- config / schemi ---
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+
+# --- LLM (OpenAI-compatible, no LiteLLM) ---
+openai>=1.40
+tenacity>=8.3
+
+# --- Agent Framework ---
+langgraph>=0.1.0
+langchain>=0.2.0
+langchain-core>=0.2.0
+
+# --- MCP Protocol ---
+mcp>=1.0.0
+
+# --- Database ---
+sqlalchemy>=2.0.31
+alembic>=1.13.0
+aiosqlite>=0.20.0
+
+# --- Web Scraping & RSS ---
+feedparser>=6.0.0
+requests>=2.32.0
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
+
+# --- Async & HTTP ---
+httpx>=0.27.0
+aiohttp>=3.9.0
+
+# --- Scheduler ---
+apscheduler>=3.10.0
+
+# --- Utilities ---
+python-dateutil>=2.9.0
+pytz>=2024.0
+numpy>=1.26
+
+# --- Dev & Testing (opzionale) ---
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+black>=24.0.0
+isort>=5.13.0
+
+
+================================================
+FILE: test.py
+================================================
+# test_orchestrator.py
+from app.agents import generate_briefing
+
+briefing = generate_briefing()
+
+print("\n" + "=" * 50)
+print("ðŸ“° FINAL BRIEFING")
+print("=" * 50)
+
+for story in briefing:
+    print(f"\nðŸ”¥ [{story['field'].upper()}] {story['title']}")
+    print(f"   Source: {story['source_name']}")
+    print(f"   URL: {story['url']}")
+    print(f"   Summary: {story['summary'][:100]}...")
+    print(f"   Why: {story['why_matters'][:100]}...")
+
+
+================================================
+FILE: test_mcp.py
+================================================
+"""
+Test rapido per i MCP servers senza avviarli come processi separati.
+"""
+
+import json
+import feedparser
+import requests
+from bs4 import BeautifulSoup
+
+# --- Test RSS ---
+print("=" * 50)
+print("TEST RSS - TechCrunch")
+print("=" * 50)
+
+feed = feedparser.parse("https://techcrunch.com/feed/")
+for i, entry in enumerate(feed.entries[:3]):
+    print(f"\n{i+1}. {entry.title}")
+    print(f"   Link: {entry.link}")
+    print(f"   Published: {entry.get('published', 'N/A')}")
+    print(f"   Summary: {entry.get('summary', '')[:100]}...")
+
+# --- Test Web Scraping ---
+print("\n" + "=" * 50)
+print("TEST WEB SCRAPER - Hacker News")
+print("=" * 50)
+
+url = "https://news.ycombinator.com"
+headers = {"User-Agent": "Pulse/1.0"}
+
+response = requests.get(url, headers=headers, timeout=10)
+soup = BeautifulSoup(response.text, "html.parser")
+
+headlines = []
+for link in soup.find_all("a", href=True):
+    text = link.get_text(strip=True)
+    if text and 15 < len(text) < 200:
+        headlines.append({
+            "title": text,
+            "url": link["href"] if link["href"].startswith("http") else url + link["href"],
+        })
+
+# Rimuovi duplicati
+seen = set()
+unique = []
+for h in headlines:
+    if h["title"] not in seen:
+        seen.add(h["title"])
+        unique.append(h)
+
+for i, h in enumerate(unique[:5]):
+    print(f"\n{i+1}. {h['title']}")
+    print(f"   URL: {h['url']}")
+
+print("\nâœ… Test completato!")
+
+
+================================================
+FILE: app/config.py
+================================================
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    # API Keys
+    gemini_api_key: str
+    cerebras_api_key: str
+    groq_api_key: str
+
+    # Database
+    database_url: str = "sqlite:///./pulse.db"
+
+    # App
+    app_name: str = "Pulse"
+    debug: bool = False
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+================================================
+FILE: app/database.py
+================================================
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+from app.config import get_settings
+
+settings = get_settings()
+
+# SQLite per sviluppo (async con aiosqlite per produzione)
+engine = create_engine(
+    settings.database_url,
+    connect_args={"check_same_thread": False}  # necessario per SQLite
+)
+
+# Sessione per le query
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base per i modelli
+Base = declarative_base()
+
+
+def get_db():
+    """Dependency per FastAPI â€” apre e chiude sessione automaticamente."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+================================================
+FILE: app/llm_client.py
+================================================
+Error reading file with 'cp1252': 'charmap' codec can't decode byte 0x8f in position 1889: character maps to <undefined>
+
+
+================================================
+FILE: app/main.py
+================================================
+"""
+Pulse â€” FastAPI Backend
+Espone REST API per il frontend.
+"""
+
+import os
+from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.security import APIKeyHeader
+from sqlalchemy.orm import Session
+
+from app.database import get_db, engine, Base
+from app.models import Briefing, UserPreference
+from app.schemas import BriefingOut, FeedbackCreate, FeedbackOut
+from app.agents.orchestrator import generate_briefing
+from app.llm_client import get_llm_client
+from app.config import get_settings
+from app.scheduler import start_scheduler
+
+# Crea tabelle se non esistono
+Base.metadata.create_all(bind=engine)
+
+settings = get_settings()
+
+app = FastAPI(
+    title=settings.app_name,
+    description="AI-powered autonomous news briefing agent",
+    version="1.0.0",
+)
+
+# CORS â€” per demo/portfolio: permetti frontend statico + localhost
+# In produzione reale, sostituisci con il tuo dominio
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "*",  # Demo/portfolio: permetti tutto (frontend Ã¨ statico)
+        # "https://tuo-dominio.com",  # Produzione: dominio specifico
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve cartella media per immagini fallback
+app.mount("/media", StaticFiles(directory="media"), name="media")
+
+
+# --- Startup / Shutdown ---
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    from app.scheduler import stop_scheduler
+    stop_scheduler()
+
+
+# --- Health Check ---
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "app": settings.app_name}
+
+
+# --- Briefing Endpoints ---
+
+@app.get("/briefing/latest", response_model=list[BriefingOut])
+def get_latest_briefing(db: Session = Depends(get_db)):
+    from sqlalchemy import func
+
+    latest_run = db.query(func.max(Briefing.created_at)).scalar()
+
+    if not latest_run:
+        return []
+
+    briefings = (
+        db.query(Briefing)
+        .filter(func.date(Briefing.created_at) == func.date(latest_run))
+        .order_by(Briefing.field, Briefing.is_trending.desc(), Briefing.id)
+        .all()
+    )
+
+    return briefings
+
+
+@app.get("/briefing/history", response_model=list[BriefingOut])
+def get_briefing_history(
+    field: str = None,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Briefing).order_by(Briefing.created_at.desc())
+
+    if field:
+        query = query.filter(Briefing.field == field)
+
+    return query.limit(limit).all()
+
+
+@app.post("/briefing/generate")
+def generate_new_briefing():
+    try:
+        briefing = generate_briefing()
+        return {
+            "status": "success",
+            "message": f"Generated {len(briefing)} stories",
+            "data": briefing
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Single Briefing ---
+
+@app.get("/briefing/{briefing_id}", response_model=BriefingOut)
+def get_briefing(briefing_id: int, db: Session = Depends(get_db)):
+    briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
+    if not briefing:
+        raise HTTPException(status_code=404, detail="Briefing not found")
+    return briefing
+
+
+@app.post("/briefing/{briefing_id}/explain")
+def explain_briefing(briefing_id: int, db: Session = Depends(get_db)):
+    briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
+    if not briefing:
+        raise HTTPException(status_code=404, detail="Briefing not found")
+
+    llm = get_llm_client()
+
+    text_to_explain = briefing.summary
+    if not text_to_explain or len(text_to_explain) < 50:
+        text_to_explain = f"{briefing.title}. {briefing.why_matters}"
+
+    explanation = llm.explain_briefing(
+        title=briefing.title,
+        summary=text_to_explain
+    )
+
+    return {
+        "briefing_id": briefing_id,
+        "original_title": briefing.title,
+        "explanation": explanation
+    }
+
+
+# --- Feedback ---
+
+@app.post("/briefing/{briefing_id}/feedback", response_model=FeedbackOut)
+def create_feedback(
+    briefing_id: int,
+    feedback: FeedbackCreate,
+    db: Session = Depends(get_db)
+):
+    briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
+    if not briefing:
+        raise HTTPException(status_code=404, detail="Briefing not found")
+
+    db_feedback = UserPreference(
+        briefing_id=briefing_id,
+        liked=feedback.liked
+    )
+    db.add(db_feedback)
+    db.commit()
+    db.refresh(db_feedback)
+
+    return db_feedback
+
+
+# --- Run ---
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+================================================
+FILE: app/models.py
+================================================
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, func
+from app.database import Base
+
+
+class Briefing(Base):
+    __tablename__ = "briefings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    field = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    summary = Column(Text, nullable=False)
+    why_matters = Column(Text, nullable=False)
+    source_name = Column(String, nullable=False)
+    image_url = Column(String, nullable=True)  # URL immagine articolo
+    published_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    is_trending = Column(Boolean, default=False)
+
+
+class UserPreference(Base):
+    __tablename__ = "user_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    briefing_id = Column(Integer, nullable=False)
+    liked = Column(Boolean, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+================================================
+FILE: app/scheduler.py
+================================================
+"""
+Scheduler per Pulse.
+Genera briefing automaticamente ogni giorno alle 8:00 AM.
+"""
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from app.agents.orchestrator import generate_briefing
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+_scheduler = None
+
+
+def _generate_daily_briefing():
+    """Task: genera briefing alle 8 AM."""
+    logger.info("🕐 Scheduler: generazione briefing delle 8 AM...")
+    try:
+        briefing = generate_briefing()
+        logger.info(f"✅ Scheduler: generati {len(briefing)} articoli")
+    except Exception as e:
+        logger.error(f"❌ Scheduler error: {e}")
+
+
+def start_scheduler():
+    """Avvia lo scheduler in background."""
+    global _scheduler
+    
+    if _scheduler is not None and _scheduler.running:
+        logger.info("Scheduler già attivo")
+        return
+    
+    _scheduler = BackgroundScheduler()
+    
+    # Ogni giorno alle 8:00 AM
+    _scheduler.add_job(
+        _generate_daily_briefing,
+        trigger=CronTrigger(hour=8, minute=0),
+        id="daily_briefing",
+        name="Generate daily briefing at 8 AM",
+        replace_existing=True,
+    )
+    
+    _scheduler.start()
+    logger.info("⏰ Scheduler avviato — prossimo briefing alle 8:00 AM")
+
+
+def stop_scheduler():
+    """Ferma lo scheduler."""
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        _scheduler.shutdown()
+        logger.info("Scheduler fermato")
+
+
+# Se eseguito direttamente, avvia subito
+if __name__ == "__main__":
+    start_scheduler()
+    
+    # Mantieni vivo
+    import time
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        stop_scheduler()
+
+
+================================================
+FILE: app/schemas.py
+================================================
+from pydantic import BaseModel, HttpUrl
+from datetime import datetime
+from typing import Optional
+
+
+class BriefingCreate(BaseModel):
+    field: str
+    title: str
+    url: HttpUrl
+    summary: str
+    why_matters: str
+    source_name: str
+    image_url: Optional[str] = None  # NUOVO
+    published_at: Optional[datetime] = None
+    is_trending: bool = False
+
+
+class BriefingOut(BaseModel):
+    id: int
+    field: str
+    title: str
+    url: str
+    summary: str
+    why_matters: str
+    source_name: str
+    image_url: Optional[str] = None  # NUOVO
+    published_at: Optional[datetime]
+    created_at: datetime
+    is_trending: bool
+
+    class Config:
+        from_attributes = True
+
+
+class FeedbackCreate(BaseModel):
+    briefing_id: int
+    liked: bool
+
+
+class FeedbackOut(BaseModel):
+    id: int
+    briefing_id: int
+    liked: Optional[bool]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+================================================
+FILE: app/agents/__init__.py
+================================================
+"""
+Agents package per Pulse.
+"""
+
+from .field_agent import FieldAgent
+from .orchestrator import generate_briefing
+
+__all__ = ["FieldAgent", "generate_briefing"]
+
+
+================================================
+FILE: app/agents/field_agent.py
+================================================
+"""
+Field Agent: specializzato per un campo.
+Fetcha 5 notizie, le scorea, restituisce top 5 con immagini.
+"""
+
+from typing import List, Dict, Any
+from app.mcp.client import get_mcp_client
+from app.llm_client import get_llm_client
+
+
+class FieldAgent:
+    def __init__(self, field: str):
+        self.field = field
+        self.mcp = get_mcp_client()
+        self.llm = get_llm_client()
+
+    def run(self, limit: int = 5) -> List[Dict[str, Any]]:
+        print(f"\n  🔍 [{self.field.upper()}] Fetching news...")
+
+        articles = self.mcp.fetch_news(self.field, limit=limit)
+        print(f"  📰 [{self.field.upper()}] Found {len(articles)} articles")
+
+        if not articles:
+            return []
+
+        scored = []
+        for article in articles:
+            # 🔒 FIX: Assicurati che summary non sia None prima di passarlo al LLM
+            safe_summary = article.get("summary") or ""
+
+            score = self.llm.score_relevance(
+                title=article["title"],
+                summary=safe_summary,
+                field=self.field
+            )
+            article["score"] = score
+            scored.append(article)
+            print(f"    • {article['title'][:50]}... → Score: {score}")
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        top5 = scored[:5]
+
+        # Scrape full text e immagine per top 3
+        for i, article in enumerate(top5[:3]):
+            if article.get("url"):
+                scraped = self.mcp.scrape_article(article["url"])
+                article["full_text"] = scraped.get("text", article.get("summary", ""))
+
+                # Se non c'è image_url dal RSS, prova dallo scraping
+                if not article.get("image_url") and scraped.get("image_url"):
+                    article["image_url"] = scraped.get("image_url")
+
+        # Per gli altri 2, prova solo a scrapeare l'immagine
+        for article in top5[3:]:
+            if article.get("url") and not article.get("image_url"):
+                image = self.mcp.scrape_image(article["url"])
+                if image:
+                    article["image_url"] = image
+
+        print(f"  ✅ [{self.field.upper()}] Top 5 selected")
+        return top5
+
+
+================================================
+FILE: app/agents/orchestrator.py
+================================================
+Error reading file with 'cp1252': 'charmap' codec can't decode byte 0x9d in position 1649: character maps to <undefined>
+
+
+================================================
+FILE: app/mcp/__init__.py
+================================================
+"""
+MCP Servers package per Pulse.
+"""
+
+# NON importare i server qui â€” causano il warning
+# I server sono standalone, vanno eseguiti direttamente
+
+__all__ = []
+
+
+================================================
+FILE: app/mcp/client.py
+================================================
+"""
+Client MCP per connettersi ai server RSS e Web.
+Usato dagli agenti LangGraph per chiamare i tool.
+"""
+
+from typing import Any, List, Dict, Optional  # FIX: aggiunto Optional
+
+
+class MCPClient:
+    """
+    Client semplificato per chiamare i tool MCP.
+    Chiama direttamente le funzioni Python.
+    """
+
+    def __init__(self):
+        self.rss_feeds = {
+            "tech": [
+                "https://techcrunch.com/feed/",
+                "https://news.ycombinator.com/rss",
+                "https://www.theverge.com/rss/index.xml",
+            ],
+            "finance": [
+                "https://feeds.bbci.co.uk/news/business/rss.xml",
+            ],
+            "sport": [
+                "https://www.espn.com/espn/rss/news",
+                "https://feeds.bbci.co.uk/sport/rss.xml",
+            ],
+            "health": [
+                "https://www.who.int/rss-feeds/news-english.xml",
+                "https://medicalxpress.com/rss-feed/",
+            ],
+            "geo": [
+                "https://feeds.bbci.co.uk/news/world/rss.xml",
+                "https://www.aljazeera.com/xml/rss/all.xml",
+            ],
+        }
+
+    def fetch_news(self, field: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Fetch news da RSS per un campo.
+        """
+        import feedparser
+
+        feeds = self.rss_feeds.get(field, [])
+        articles = []
+
+        for feed_url in feeds:
+            try:
+                feed = feedparser.parse(feed_url)
+                for entry in feed.entries[:limit]:
+                    # Estrai media:content o enclosure se presente
+                    image_url = None
+                    if hasattr(entry, 'media_content') and entry.media_content:
+                        image_url = entry.media_content[0].get('url')
+                    elif hasattr(entry, 'enclosures') and entry.enclosures:
+                        image_url = entry.enclosures[0].get('href')
+
+                    # ðŸ”’ FIX: Usa "or" per evitare None quando la chiave esiste ma Ã¨ None
+                    summary = (entry.get("summary") or "")[:500]
+
+                    articles.append({
+                        "title": entry.get("title", "No title"),
+                        "url": entry.get("link", ""),
+                        "published": entry.get("published", ""),
+                        "summary": summary,
+                        "source": feed.feed.get("title", feed_url),
+                        "image_url": image_url,
+                    })
+            except Exception as e:
+                print(f"Error parsing {feed_url}: {e}")
+                continue
+
+        return articles[:limit]
+
+    def scrape_article(self, url: str) -> Dict[str, Any]:
+        """
+        Scrape full text e immagine da un URL.
+        """
+        import requests
+        from bs4 import BeautifulSoup
+
+        headers = {"User-Agent": "Pulse/1.0 (AI News Aggregator)"}
+
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # Cerca og:image
+            og_image = None
+            og_tag = soup.find("meta", property="og:image")
+            if og_tag:
+                og_image = og_tag.get("content")
+
+            # Fallback: twitter:image
+            if not og_image:
+                twitter_tag = soup.find("meta", attrs={"name": "twitter:image"})
+                if twitter_tag:
+                    og_image = twitter_tag.get("content")
+
+            article = (
+                soup.find("article") or
+                soup.find("div", class_="article-content") or
+                soup.find("div", class_="post-content") or
+                soup.find("main")
+            )
+
+            if article:
+                paragraphs = article.find_all("p")
+            else:
+                paragraphs = soup.find_all("p")
+
+            text = " ".join([p.get_text(strip=True) for p in paragraphs[:20]])
+            text = text[:8000]
+
+            return {
+                "url": url,
+                "title": soup.title.get_text(strip=True) if soup.title else "No title",
+                "text": text,
+                "image_url": og_image,
+                "word_count": len(text.split()),
+            }
+
+        except Exception as e:
+            return {"error": f"Scraping failed: {str(e)}"}
+
+    def scrape_image(self, url: str) -> Optional[str]:
+        """
+        Scrape solo l'immagine principale (og:image) da un URL.
+        """
+        import requests
+        from bs4 import BeautifulSoup
+
+        headers = {"User-Agent": "Pulse/1.0 (AI News Aggregator)"}
+
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            og_tag = soup.find("meta", property="og:image")
+            if og_tag:
+                return og_tag.get("content")
+
+            twitter_tag = soup.find("meta", attrs={"name": "twitter:image"})
+            if twitter_tag:
+                return twitter_tag.get("content")
+
+            return None
+        except:
+            return None
+
+
+# Singleton
+_mcp_client = None
+
+def get_mcp_client() -> MCPClient:
+    global _mcp_client
+    if _mcp_client is None:
+        _mcp_client = MCPClient()
+    return _mcp_client
+
+
+================================================
+FILE: app/mcp/rss_server.py
+================================================
+"""
+MCP Server: RSS Feed Reader
+Espone tool per fetchare notizie da feed RSS per ogni campo.
+"""
+
+import json
+import feedparser
+from datetime import datetime
+from typing import List, Dict, Any
+
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import Tool, TextContent
+
+
+# Feed RSS per campo
+RSS_FEEDS = {
+    "tech": [
+        "https://techcrunch.com/feed/",
+        "https://news.ycombinator.com/rss",
+        "https://www.theverge.com/rss/index.xml",
+    ],
+    "finance": [
+        "https://feeds.bbci.co.uk/news/business/rss.xml",
+        "https://www.reutersagency.com/feed/?best-topics=business-finance",
+    ],
+    "sport": [
+        "https://www.espn.com/espn/rss/news",
+        "https://feeds.bbci.co.uk/sport/rss.xml",
+    ],
+    "health": [
+        "https://www.who.int/rss-feeds/news-english.xml",
+        "https://medicalxpress.com/rss-feed/",
+    ],
+    "geo": [
+        "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "https://www.aljazeera.com/xml/rss/all.xml",
+    ],
+}
+
+
+app = Server("rss-server")
+
+
+@app.list_tools()
+async def list_tools() -> List[Tool]:
+    """Dichiara i tool disponibili."""
+    tools = []
+    for field in RSS_FEEDS.keys():
+        tools.append(
+            Tool(
+                name=f"fetch_{field}_news",
+                description=f"Fetch latest {field} news from RSS feeds",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max number of articles to return",
+                            "default": 10,
+                        }
+                    },
+                },
+            )
+        )
+    return tools
+
+
+@app.call_tool()
+async def call_tool(name: str, arguments: Any) -> List[TextContent]:
+    """Esegue il tool richiesto."""
+    # Estrai campo dal nome (es. "fetch_tech_news" â†’ "tech")
+    field = name.replace("fetch_", "").replace("_news", "")
+
+    if field not in RSS_FEEDS:
+        return [TextContent(type="text", text=json.dumps({"error": f"Unknown field: {field}"}))]
+
+    limit = arguments.get("limit", 10) if isinstance(arguments, dict) else 10
+
+    articles = []
+    for feed_url in RSS_FEEDS[field]:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:limit]:
+                # ðŸ”’ FIX: Usa "or" per evitare None
+                summary = (entry.get("summary") or "")[:500]
+
+                articles.append({
+                    "title": entry.get("title", "No title"),
+                    "link": entry.get("link", ""),
+                    "published": entry.get("published", ""),
+                    "summary": summary,
+                    "source": feed.feed.get("title", feed_url),
+                })
+        except Exception as e:
+            print(f"Error parsing {feed_url}: {e}")
+            continue
+
+    # Ordina per data (piÃ¹ recenti prima) e limita
+    articles = articles[:limit]
+
+    return [TextContent(type="text", text=json.dumps({
+        "field": field,
+        "count": len(articles),
+        "articles": articles,
+    }, ensure_ascii=False))]
+
+
+async def main():
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(read_stream, write_stream, app.create_initialization_options())
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+
+
+================================================
+FILE: app/mcp/web_server.py
+================================================
+"""
+MCP Server: Web Scraper
+Espone tool per scraping di articoli e homepage.
+"""
+
+import json
+import requests
+from typing import List, Any
+
+from bs4 import BeautifulSoup
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import Tool, TextContent
+
+
+app = Server("web-server")
+
+
+@app.list_tools()
+async def list_tools() -> List[Tool]:
+    """Dichiara i tool disponibili."""
+    return [
+        Tool(
+            name="scrape_article",
+            description="Scrape full text from a news article URL",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL of the article to scrape",
+                    }
+                },
+                "required": ["url"],
+            },
+        ),
+        Tool(
+            name="extract_headlines",
+            description="Extract headline links from a news homepage",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL of the homepage",
+                    }
+                },
+                "required": ["url"],
+            },
+        ),
+    ]
+
+
+@app.call_tool()
+async def call_tool(name: str, arguments: Any) -> List[TextContent]:
+    """Esegue il tool richiesto."""
+    if isinstance(arguments, dict):
+        url = arguments.get("url", "")
+    else:
+        return [TextContent(type="text", text=json.dumps({"error": "Invalid arguments"}))]
+    
+    if not url:
+        return [TextContent(type="text", text=json.dumps({"error": "URL required"}))]
+    
+    headers = {
+        "User-Agent": "Pulse/1.0 (AI News Aggregator; Open Source)"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        if name == "scrape_article":
+            # Estrai testo articolo
+            # Prova vari selettori comuni
+            article = (
+                soup.find("article") or
+                soup.find("div", class_="article-content") or
+                soup.find("div", class_="post-content") or
+                soup.find("main")
+            )
+            
+            if article:
+                paragraphs = article.find_all("p")
+            else:
+                paragraphs = soup.find_all("p")
+            
+            text = " ".join([p.get_text(strip=True) for p in paragraphs[:20]])
+            text = text[:8000]  # limita per LLM
+            
+            result = {
+                "url": url,
+                "title": soup.title.get_text(strip=True) if soup.title else "No title",
+                "text": text,
+                "word_count": len(text.split()),
+            }
+            
+        elif name == "extract_headlines":
+            # Estrai headline links
+            headlines = []
+            for link in soup.find_all("a", href=True):
+                text = link.get_text(strip=True)
+                if text and len(text) > 15 and len(text) < 200:
+                    headlines.append({
+                        "title": text,
+                        "url": link["href"] if link["href"].startswith("http") else url + link["href"],
+                    })
+            
+            # Rimuovi duplicati
+            seen = set()
+            unique = []
+            for h in headlines:
+                if h["title"] not in seen:
+                    seen.add(h["title"])
+                    unique.append(h)
+            
+            result = {
+                "url": url,
+                "count": len(unique[:20]),
+                "headlines": unique[:20],
+            }
+        else:
+            result = {"error": f"Unknown tool: {name}"}
+            
+    except requests.RequestException as e:
+        result = {"error": f"Request failed: {str(e)}"}
+    except Exception as e:
+        result = {"error": f"Scraping failed: {str(e)}"}
+    
+    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+
+
+async def main():
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(read_stream, write_stream, app.create_initialization_options())
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+
+
+================================================
+FILE: frontend/index.html
+================================================
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse â€” Intelligence Briefing</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #eef2ff 50%, #faf5ff 100%);
+            color: #0f172a;
+            min-height: 100vh;
+        }
+
+        #app {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        }
+
+        .logo h1 {
+            font-size: 32px;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: -1.5px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .last-updated {
+            color: #64748b;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-refresh {
+            background: #2563eb;
+            color: white;
+        }
+
+        .btn-refresh:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .btn-refresh:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 6px 14px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            color: #64748b;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            border-color: #2563eb;
+            color: #2563eb;
+        }
+
+        .filter-btn.active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+
+        /* Cards Grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        /* Card */
+        .card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 4px 20px rgba(0,0,0,0.03);
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+        }
+
+        /* Card Image */
+        .card-image {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            background: linear-gradient(135deg, #e2e8f0, #f1f5f9);
+        }
+
+        .card-image-fallback {
+            width: 100%;
+            height: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #e0e7ff, #f3e8ff);
+            color: #64748b;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Card Body */
+        .card-body {
+            padding: 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .field-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .field-tech { background: #eff6ff; color: #1e40af; }
+        .field-finance { background: #f0fdf4; color: #166534; }
+        .field-sport { background: #fff7ed; color: #9a3412; }
+        .field-health { background: #fdf2f8; color: #9d174d; }
+        .field-geo { background: #faf5ff; color: #6b21a8; }
+
+        .trending {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            background: linear-gradient(135deg, #f59e0b, #ef4444);
+            color: white;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e293b;
+            line-height: 1.4;
+            margin-bottom: 8px;
+            text-decoration: none;
+            display: block;
+        }
+
+        .card-title:hover {
+            color: #2563eb;
+        }
+
+        .card-summary {
+            font-size: 13px;
+            color: #64748b;
+            line-height: 1.6;
+            margin-bottom: 12px;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            flex: 1;
+        }
+
+        .card-source {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            padding-top: 14px;
+            border-top: 1px solid #f1f5f9;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            color: #64748b;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .action-btn:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+
+        .action-btn.in-breve {
+            background: #eff6ff;
+            color: #2563eb;
+            border-color: #bfdbfe;
+        }
+
+        .action-btn.in-breve:hover {
+            background: #dbeafe;
+        }
+
+        .action-btn.liked {
+            background: #f0fdf4;
+            border-color: #166534;
+            color: #166534;
+        }
+
+        .action-btn.disliked {
+            background: #fef2f2;
+            border-color: #dc2626;
+            color: #dc2626;
+        }
+
+        /* Loading */
+        .loading-bar {
+            height: 2px;
+            background: #e2e8f0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 24px;
+            display: none;
+        }
+
+        .loading-bar.active {
+            display: block;
+        }
+
+        .loading-bar::after {
+            content: '';
+            display: block;
+            height: 100%;
+            width: 30%;
+            background: linear-gradient(90deg, #2563eb, #7c3aed);
+            border-radius: 2px;
+            animation: slide 1s infinite ease-in-out;
+        }
+
+        @keyframes slide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(400%); }
+        }
+
+        /* Empty */
+        .empty {
+            text-align: center;
+            padding: 80px 20px;
+            color: #94a3b8;
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 16px;
+            padding: 28px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #94a3b8;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .modal-body {
+            font-size: 15px;
+            line-height: 1.7;
+            color: #334155;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <h1>Pulse</h1>
+            </div>
+            <div class="header-right">
+                <span class="last-updated">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    {{ lastUpdated }}
+                </span>
+                <button 
+                    class="btn btn-refresh" 
+                    @click="refreshBriefings"
+                    :disabled="isLoading"
+                >
+                    <svg v-if="!isLoading" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>
+                    <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+                    {{ isLoading ? 'Aggiornamento...' : 'Aggiorna' }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading-bar" :class="{ active: isLoading }"></div>
+
+        <!-- Filters -->
+        <div class="filters">
+            <button 
+                class="filter-btn" 
+                :class="{ active: activeFilter === 'all' }"
+                @click="activeFilter = 'all'"
+            >
+                Tutti
+            </button>
+            <button 
+                v-for="field in fields" 
+                :key="field"
+                class="filter-btn"
+                :class="{ active: activeFilter === field }"
+                @click="activeFilter = field"
+            >
+                {{ getFieldLabel(field) }}
+            </button>
+        </div>
+
+        <!-- Cards Grid -->
+        <div class="cards-grid">
+            <div v-if="filteredBriefings.length === 0" class="empty">
+                <div class="empty-icon">ðŸ“­</div>
+                <div>Nessun briefing disponibile</div>
+            </div>
+
+            <div 
+                v-for="item in filteredBriefings" 
+                :key="item.id"
+                class="card"
+            >
+                <!-- Image -->
+                <img 
+                    v-if="item.image_url"
+                    :src="item.image_url" 
+                    class="card-image"
+                    @error="handleImageError"
+                    :data-fallback="getFallbackImage(item.source_name)"
+                />
+                <div v-else class="card-image-fallback">
+                    {{ getSourceInitials(item.source_name) }}
+                </div>
+
+                <!-- Body -->
+                <div class="card-body">
+                    <div class="card-header-row">
+                        <span class="field-badge" :class="'field-' + item.field">
+                            {{ getFieldLabel(item.field) }}
+                        </span>
+                        <span v-if="item.is_trending" class="trending">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                            Hot
+                        </span>
+                    </div>
+
+                    <a :href="item.url" target="_blank" class="card-title">
+                        {{ item.title }}
+                    </a>
+
+                    <div class="card-summary">{{ item.summary }}</div>
+
+                    <div class="card-source">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
+                        {{ item.source_name }}
+                    </div>
+
+                    <div class="card-actions">
+                        <button 
+                            class="action-btn in-breve" 
+                            @click="showInBreve(item.id)"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            In breve
+                        </button>
+                        <button 
+                            class="action-btn" 
+                            :class="{ liked: item.liked === true }"
+                            @click="feedback(item.id, true)"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                        </button>
+                        <button 
+                            class="action-btn"
+                            :class="{ disliked: item.liked === false }"
+                            @click="feedback(item.id, false)"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal In Breve -->
+        <div v-if="modal.show" class="modal-overlay" @click.self="closeModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        In breve
+                    </h3>
+                    <button class="modal-close" @click="closeModal">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+                <div v-if="modal.loading" class="loading-bar active"></div>
+                <div v-else class="modal-body">
+                    <p><strong>{{ modal.title }}</strong></p>
+                    <p>{{ modal.content }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    briefings: [],
+                    isLoading: false,
+                    lastUpdated: 'Mai',
+                    activeFilter: 'all',
+                    fields: ['tech', 'finance', 'sport', 'health', 'geo'],
+                    modal: {
+                        show: false,
+                        loading: false,
+                        title: '',
+                        content: ''
+                    },
+                    API_URL: 'http://localhost:8000',
+                    // Mappa fonte â†’ immagine fallback
+                    sourceImages: {
+                        'TechCrunch': 'techcrunch.jpg',
+                        'BBC News': 'bbc.jpg',
+                        'www.espn.com - TOP': 'espn.jpg',
+                        'News (English) - World Health Organization': 'who.jpg',
+                        // Aggiungi altre fonti qui
+                    }
+                };
+            },
+
+            computed: {
+                filteredBriefings() {
+                    if (this.activeFilter === 'all') return this.briefings;
+                    return this.briefings.filter(b => b.field === this.activeFilter);
+                }
+            },
+
+            mounted() {
+                this.loadBriefings();
+                setInterval(() => this.loadBriefings(), 300000);
+            },
+
+            methods: {
+                getFallbackImage(sourceName) {
+                    // Normalizza il nome fonte e cerca nella mappa
+                    const normalized = Object.keys(this.sourceImages).find(
+                        key => sourceName.toLowerCase().includes(key.toLowerCase()) || 
+                              key.toLowerCase().includes(sourceName.toLowerCase())
+                    );
+                    return normalized ? `/media/${this.sourceImages[normalized]}` : null;
+                },
+
+                getSourceInitials(sourceName) {
+                    return sourceName.split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase();
+                },
+
+                handleImageError(event) {
+                    const fallback = event.target.getAttribute('data-fallback');
+                    if (fallback) {
+                        event.target.src = fallback;
+                    } else {
+                        // Nascondi img e mostra fallback div
+                        event.target.style.display = 'none';
+                        event.target.nextElementSibling.style.display = 'flex';
+                    }
+                },
+
+                async loadBriefings() {
+                    try {
+                        const res = await fetch(`${this.API_URL}/briefing/latest`);
+                        if (!res.ok) throw new Error('Errore caricamento');
+                        
+                        this.briefings = await res.json();
+                        if (this.briefings.length > 0) {
+                            const latest = new Date(Math.max(...this.briefings.map(b => new Date(b.created_at))));
+                            this.lastUpdated = latest.toLocaleString('it-IT');
+                        }
+                    } catch (err) {
+                        console.error('Load error:', err);
+                    }
+                },
+
+                async refreshBriefings() {
+                    this.isLoading = true;
+                    try {
+                        const res = await fetch(`${this.API_URL}/briefing/generate`, {
+                            method: 'POST'
+                        });
+                        if (!res.ok) throw new Error('Errore generazione');
+                        
+                        await this.loadBriefings();
+                    } catch (err) {
+                        alert('Errore: ' + err.message);
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                async showInBreve(id) {
+                    const item = this.briefings.find(b => b.id === id);
+                    this.modal = {
+                        show: true,
+                        loading: true,
+                        title: item.title,
+                        content: ''
+                    };
+
+                    try {
+                        const res = await fetch(`${this.API_URL}/briefing/${id}/explain`, {
+                            method: 'POST'
+                        });
+                        const data = await res.json();
+                        this.modal.content = data.explanation;
+                    } catch (err) {
+                        this.modal.content = 'Errore nel caricamento.';
+                    } finally {
+                        this.modal.loading = false;
+                    }
+                },
+
+                closeModal() {
+                    this.modal.show = false;
+                },
+
+                async feedback(id, liked) {
+                    try {
+                        await fetch(`${this.API_URL}/briefing/${id}/feedback`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ liked })
+                        });
+                        const item = this.briefings.find(b => b.id === id);
+                        item.liked = liked;
+                    } catch (err) {
+                        console.error('Feedback error:', err);
+                    }
+                },
+
+                getFieldLabel(field) {
+                    const labels = {
+                        tech: 'Tech',
+                        finance: 'Finance',
+                        sport: 'Sport',
+                        health: 'Health',
+                        geo: 'Geo'
+                    };
+                    return labels[field] || field;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

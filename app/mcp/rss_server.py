@@ -71,31 +71,34 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
     """Esegue il tool richiesto."""
     # Estrai campo dal nome (es. "fetch_tech_news" → "tech")
     field = name.replace("fetch_", "").replace("_news", "")
-    
+
     if field not in RSS_FEEDS:
         return [TextContent(type="text", text=json.dumps({"error": f"Unknown field: {field}"}))]
-    
+
     limit = arguments.get("limit", 10) if isinstance(arguments, dict) else 10
-    
+
     articles = []
     for feed_url in RSS_FEEDS[field]:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:limit]:
+                # 🔒 FIX: Usa "or" per evitare None
+                summary = (entry.get("summary") or "")[:500]
+
                 articles.append({
                     "title": entry.get("title", "No title"),
                     "link": entry.get("link", ""),
                     "published": entry.get("published", ""),
-                    "summary": entry.get("summary", "")[:500],  # truncate
+                    "summary": summary,
                     "source": feed.feed.get("title", feed_url),
                 })
         except Exception as e:
             print(f"Error parsing {feed_url}: {e}")
             continue
-    
+
     # Ordina per data (più recenti prima) e limita
     articles = articles[:limit]
-    
+
     return [TextContent(type="text", text=json.dumps({
         "field": field,
         "count": len(articles),

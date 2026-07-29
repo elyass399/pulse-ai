@@ -1,10 +1,11 @@
 """
-Pulse — FastAPI Backend
+Pulse - FastAPI Backend
 Espone REST API per il frontend.
 """
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.database import get_db, engine, Base
@@ -26,7 +27,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS per frontend
+# CORS - per demo/portfolio: permetti tutto
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve cartella media per immagini fallback
+app.mount("/media", StaticFiles(directory="media"), name="media")
 
 
 # --- Startup / Shutdown ---
@@ -60,19 +64,13 @@ def health_check():
 
 @app.get("/briefing/latest", response_model=list[BriefingOut])
 def get_latest_briefing(db: Session = Depends(get_db)):
-    """
-    Restituisce TUTTI gli articoli dell'ultimo run (25 articoli),
-    ordinati per campo e score.
-    """
     from sqlalchemy import func
 
-    # Trova l'ultimo run (max created_at)
     latest_run = db.query(func.max(Briefing.created_at)).scalar()
 
     if not latest_run:
         return []
 
-    # Prendi TUTTI i briefing di quel run, ordinati per campo
     briefings = (
         db.query(Briefing)
         .filter(func.date(Briefing.created_at) == func.date(latest_run))
@@ -89,9 +87,6 @@ def get_briefing_history(
     limit: int = 50,
     db: Session = Depends(get_db)
 ):
-    """
-    Storico briefings. Filtrabile per campo.
-    """
     query = db.query(Briefing).order_by(Briefing.created_at.desc())
 
     if field:
@@ -102,10 +97,6 @@ def get_briefing_history(
 
 @app.post("/briefing/generate")
 def generate_new_briefing():
-    """
-    Triggera manualmente la generazione di un nuovo briefing.
-    Genera 25 articoli (5 per campo).
-    """
     try:
         briefing = generate_briefing()
         return {
@@ -121,9 +112,6 @@ def generate_new_briefing():
 
 @app.get("/briefing/{briefing_id}", response_model=BriefingOut)
 def get_briefing(briefing_id: int, db: Session = Depends(get_db)):
-    """
-    Dettaglio di un singolo briefing.
-    """
     briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
     if not briefing:
         raise HTTPException(status_code=404, detail="Briefing not found")
@@ -132,18 +120,19 @@ def get_briefing(briefing_id: int, db: Session = Depends(get_db)):
 
 @app.post("/briefing/{briefing_id}/explain")
 def explain_briefing(briefing_id: int, db: Session = Depends(get_db)):
-    """
-    Spiega il briefing in modo breve e chiaro.
-    """
     briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
     if not briefing:
         raise HTTPException(status_code=404, detail="Briefing not found")
 
     llm = get_llm_client()
-    
+
+    text_to_explain = briefing.summary
+    if not text_to_explain or len(text_to_explain) < 50:
+        text_to_explain = f"{briefing.title}. {briefing.why_matters}"
+
     explanation = llm.explain_briefing(
         title=briefing.title,
-        summary=briefing.summary
+        summary=text_to_explain
     )
 
     return {
@@ -161,9 +150,6 @@ def create_feedback(
     feedback: FeedbackCreate,
     db: Session = Depends(get_db)
 ):
-    """
-    Thumbs up/down per un briefing.
-    """
     briefing = db.query(Briefing).filter(Briefing.id == briefing_id).first()
     if not briefing:
         raise HTTPException(status_code=404, detail="Briefing not found")

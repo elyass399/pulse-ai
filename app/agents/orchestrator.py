@@ -1,197 +1,145 @@
 """
-LangGraph Orchestrator per Pulse.
-Coordina 5 field agents, sintetizza TUTTI gli articoli (25 totali), salva nel DB.
+Orchestrator: coordina i Field Agent e genera il briefing finale.
+Salva i risultati nel database con validazione dei campi obbligatori.
 """
 
-from typing import List, Dict, Any, TypedDict
+from typing import List, Dict, Any, Optional
 from datetime import datetime
-
-from langgraph.graph import StateGraph, END
-from langgraph.constants import START
-
 from app.agents.field_agent import FieldAgent
 from app.llm_client import get_llm_client
 from app.database import SessionLocal
 from app.models import Briefing
 
 
-# --- State Type ---
-
-class PulseState(TypedDict):
-    """Stato condiviso tra i nodi del grafo."""
-    fields: List[str]                     # campi da processare
-    results: Dict[str, List[Dict]]        # tutti gli articoli per campo (5 each)
-    final_briefing: List[Dict]            # TUTTI gli articoli da salvare (25)
-    status: str                           # stato corrente
+FIELDS = ["tech", "finance", "sport", "health", "geo"]
 
 
-# --- Nodi ---
-
-def fetch_all_fields(state: PulseState) -> PulseState:
+def generate_briefing() -> List[Dict[str, Any]]:
     """
-    Nodo FETCH: spawna 5 field agents.
-    Ognuno fetcha 5 notizie = 25 totali.
+    Genera il briefing giornaliero:
+    1. Per ogni campo, fetcha e scorea le notizie
+    2. Per le top, genera summary e why_matters via LLM
+    3. Salva nel database
+    4. Restituisce il risultato
     """
     print("\n" + "=" * 50)
-    print("🚀 ORCHESTRATOR: Fetching all fields (5 each = 25 total)")
-    print("=" * 50)
-
-    fields = state.get("fields", ["tech", "finance", "sport", "health", "geo"])
-    results = {}
-
-    for field in fields:
-        agent = FieldAgent(field)
-        top5 = agent.run(limit=5)
-        results[field] = top5
-
-    state["results"] = results
-    state["status"] = "fetched"
-    return state
-
-
-def synthesize_all(state: PulseState) -> PulseState:
-    """
-    Nodo SYNTHESIZE: scrive riassunto e "why it matters" per TUTTI i 25 articoli.
-    """
-    print("\n" + "=" * 50)
-    print("🧠 ORCHESTRATOR: Synthesizing ALL 25 articles")
+    print("PULSE - Generazione Briefing")
     print("=" * 50)
 
     llm = get_llm_client()
-    final_briefing = []
+    all_stories = []
 
-    for field, articles in state["results"].items():
-        for i, article in enumerate(articles):
-            text = article.get("full_text", article.get("summary", ""))
-            
-            # Riassunto
-            summary = llm.summarize(text=text, field=field)
-            
-            # Why it matters
-            why_matters = llm.explain_why_matters(
-                title=article["title"],
-                summary=summary,
+    for field in FIELDS:
+        agent = FieldAgent(field)
+        articles = agent.run(limit=5)
+
+        for article in articles:
+            title = article.get("title", "Senza titolo").strip()
+            url = article.get("url", "").strip()
+            source_name = article.get("source", "Sconosciuto").strip()
+            image_url = article.get("image_url")
+            published = article.get("published", "")
+            score = article.get("score", 5)
+
+            raw_text = article.get("full_text", "") or article.get("summary", "") or ""
+
+            print(f"    Generando summary per: {title[:50]}...")
+            llm_result = llm.summarize_and_explain(
+                title=title,
+                text=raw_text,
                 field=field
             )
+
+            summary = llm_result.get("summary", "").strip()
+            why_matters = llm_result.get("why_matters", "").strip()
+
+            # Validazione: nessun campo puo essere vuoto/None
+            if not summary:
+                summary = raw_text[:300] + "..." if len(raw_text) > 50 else f"Articolo su {title[:100]}."
             if not why_matters:
-                why_matters = f"Significant development in {field} with potential industry impact."
+                why_matters = f"Notizia rilevante nel settore {field}."
 
             story = {
                 "field": field,
-                "title": article["title"],
-                "url": article["url"],
+                "title": title,
+                "url": url,
                 "summary": summary,
                 "why_matters": why_matters,
-                "source_name": article.get("source", "Unknown"),
-                "published_at": article.get("published"),
-                "score": article.get("score", 0),
-                "rank": i + 1,  # 1-5 per campo
+                "source_name": source_name,
+                "image_url": image_url,
+                "published_at": _parse_date(published),
+                "is_trending": score >= 8,
             }
+            all_stories.append(story)
 
-            final_briefing.append(story)
-            print(f"  [{field.upper()} #{i+1}] {article['title'][:50]}...")
+    print(f"\nSalvataggio di {len(all_stories)} articoli nel database...")
+    saved = _save_to_db(all_stories)
+    print(f"Salvati {saved}/{len(all_stories)} articoli")
 
-    state["final_briefing"] = final_briefing
-    state["status"] = "synthesized"
-    return state
+    return all_stories
 
 
-def save_to_db(state: PulseState) -> PulseState:
-    """
-    Nodo SAVE: salva TUTTI i 25 articoli nel database.
-    """
-    print("\n" + "=" * 50)
-    print(f"💾 ORCHESTRATOR: Saving {len(state['final_briefing'])} articles")
-    print("=" * 50)
+def _save_to_db(stories: List[Dict[str, Any]]) -> int:
+    """Salva i briefing nel database con gestione errori."""
+    from app.database import Base, engine
+    from app.models import Briefing, UserPreference  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
-    try:
-        # Trova lo score più alto per il trending badge
-        max_score = max(
-            (s.get("score", 0) for s in state["final_briefing"]),
-            default=0
-        )
+    saved_count = 0
 
-        for story in state["final_briefing"]:
+    try:
+        for story in stories:
+            if not story.get("title") or not story.get("url"):
+                print(f"    Saltato: titolo o URL mancante")
+                continue
+
+            summary = story.get("summary") or "Riassunto non disponibile."
+            why_matters = story.get("why_matters") or "Rilevanza non analizzata."
+
             briefing = Briefing(
                 field=story["field"],
                 title=story["title"],
-                url=str(story["url"]),
-                summary=story["summary"],
-                why_matters=story["why_matters"],
-                source_name=story["source_name"],
-                published_at=parse_date(story.get("published_at")),
-                is_trending=(story.get("score", 0) == max_score and max_score > 7),
+                url=story["url"],
+                summary=summary,
+                why_matters=why_matters,
+                source_name=story.get("source_name", "Sconosciuto"),
+                image_url=story.get("image_url"),
+                published_at=story.get("published_at"),
+                is_trending=story.get("is_trending", False),
             )
             db.add(briefing)
+            saved_count += 1
 
         db.commit()
-        print(f"  ✅ Saved {len(state['final_briefing'])} briefings")
+        return saved_count
 
     except Exception as e:
         db.rollback()
-        print(f"  ❌ Error saving: {e}")
+        print(f"    Errore database: {e}")
+        return 0
     finally:
         db.close()
 
-    state["status"] = "saved"
-    return state
 
-
-def parse_date(date_str: Any) -> datetime:
-    """Parse date string, ritorna now se fallisce."""
+def _parse_date(date_str: str) -> Optional[datetime]:
+    """Parse date string in vari formati comuni."""
     if not date_str:
-        return datetime.now()
+        return None
 
-    try:
-        from dateutil import parser
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return parser.parse(date_str, fuzzy=True)
-    except:
-        return datetime.now()
+    formats = [
+        "%a, %d %b %Y %H:%M:%S %z",
+        "%a, %d %b %Y %H:%M:%S GMT",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%d %H:%M:%S",
+        "%d %b %Y %H:%M:%S",
+    ]
 
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str.strip(), fmt)
+        except ValueError:
+            continue
 
-# --- Costruzione Grafo ---
-
-def build_graph() -> StateGraph:
-    """
-    Costruisce il grafo LangGraph.
-    """
-    workflow = StateGraph(PulseState)
-
-    workflow.add_node("fetch", fetch_all_fields)
-    workflow.add_node("synthesize", synthesize_all)
-    workflow.add_node("save", save_to_db)
-
-    workflow.add_edge(START, "fetch")
-    workflow.add_edge("fetch", "synthesize")
-    workflow.add_edge("synthesize", "save")
-    workflow.add_edge("save", END)
-
-    return workflow.compile()
-
-
-# --- Entry Point ---
-
-def generate_briefing(fields: List[str] = None) -> List[Dict[str, Any]]:
-    """
-    Genera un briefing completo con 25 articoli (5 per campo).
-    Entry point principale.
-    """
-    if fields is None:
-        fields = ["tech", "finance", "sport", "health", "geo"]
-
-    graph = build_graph()
-
-    initial_state: PulseState = {
-        "fields": fields,
-        "results": {},
-        "final_briefing": [],
-        "status": "start",
-    }
-
-    final_state = graph.invoke(initial_state)
-
-    return final_state["final_briefing"]
+    return None

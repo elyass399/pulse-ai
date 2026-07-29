@@ -1,6 +1,6 @@
 """
-Field Agent: specializzato per un campo (tech, finance, sport, health, geo).
-Fetcha 5 notizie da RSS, le scorea con LLM, restituisce top 5.
+Field Agent: specializzato per un campo.
+Fetcha 5 notizie, le scorea, restituisce top 5 con immagini.
 """
 
 from typing import List, Dict, Any
@@ -9,49 +9,53 @@ from app.llm_client import get_llm_client
 
 
 class FieldAgent:
-    """
-    Agente specializzato per un campo.
-    Fetcha 5 notizie per campo per avere 25 totali nella tabella.
-    """
-
     def __init__(self, field: str):
         self.field = field
         self.mcp = get_mcp_client()
         self.llm = get_llm_client()
 
     def run(self, limit: int = 5) -> List[Dict[str, Any]]:
-        """
-        Pipeline completa: fetch → score → filter top 5.
-        """
-        print(f"\n  🔍 [{self.field.upper()}] Fetching news...")
+        print(f"\n  [{self.field.upper()}] Fetching news...")
 
-        # 1. Fetch 5 notizie da RSS
         articles = self.mcp.fetch_news(self.field, limit=limit)
-        print(f"  📰 [{self.field.upper()}] Found {len(articles)} articles")
+        print(f"  [{self.field.upper()}] Found {len(articles)} articles")
 
         if not articles:
             return []
 
-        # 2. Score rilevanza con LLM — 5 chiamate
         scored = []
         for article in articles:
+            # FIX: Assicurati che summary non sia None prima di passarlo al LLM
+            safe_summary = article.get("summary") or ""
+
             score = self.llm.score_relevance(
                 title=article["title"],
-                summary=article.get("summary", ""),
+                summary=safe_summary,
                 field=self.field
             )
             article["score"] = score
             scored.append(article)
-            print(f"    • {article['title'][:50]}... → Score: {score}")
+            print(f"    - {article['title'][:50]}... -> Score: {score}")
 
-        # 3. Ordina per score e prendi top 5
         scored.sort(key=lambda x: x["score"], reverse=True)
         top5 = scored[:5]
 
-        # 4. Scrape full text SOLO per il top 1 (risparmio chiamate)
-        if top5 and top5[0].get("url"):
-            scraped = self.mcp.scrape_article(top5[0]["url"])
-            top5[0]["full_text"] = scraped.get("text", top5[0].get("summary", ""))
+        # Scrape full text e immagine per top 3
+        for i, article in enumerate(top5[:3]):
+            if article.get("url"):
+                scraped = self.mcp.scrape_article(article["url"])
+                article["full_text"] = scraped.get("text", article.get("summary", ""))
 
-        print(f"  ✅ [{self.field.upper()}] Top 5 selected")
+                # Se non c'e image_url dal RSS, prova dallo scraping
+                if not article.get("image_url") and scraped.get("image_url"):
+                    article["image_url"] = scraped.get("image_url")
+
+        # Per gli altri 2, prova solo a scrapeare l'immagine
+        for article in top5[3:]:
+            if article.get("url") and not article.get("image_url"):
+                image = self.mcp.scrape_image(article["url"])
+                if image:
+                    article["image_url"] = image
+
+        print(f"  [{self.field.upper()}] Top 5 selected")
         return top5

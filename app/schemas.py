@@ -3,8 +3,6 @@ from datetime import datetime
 from typing import Optional
 
 
-# --- Input ---
-
 class BriefingCreate(BaseModel):
     field: str
     title: str
@@ -12,16 +10,10 @@ class BriefingCreate(BaseModel):
     summary: str
     why_matters: str
     source_name: str
+    image_url: Optional[str] = None  # NUOVO
     published_at: Optional[datetime] = None
     is_trending: bool = False
 
-
-class FeedbackCreate(BaseModel):
-    briefing_id: int
-    liked: bool
-
-
-# --- Output ---
 
 class BriefingOut(BaseModel):
     id: int
@@ -31,12 +23,18 @@ class BriefingOut(BaseModel):
     summary: str
     why_matters: str
     source_name: str
+    image_url: Optional[str] = None  # NUOVO
     published_at: Optional[datetime]
     created_at: datetime
     is_trending: bool
 
     class Config:
-        from_attributes = True  # compatibile con SQLAlchemy ORM
+        from_attributes = True
+
+
+class FeedbackCreate(BaseModel):
+    briefing_id: int
+    liked: bool
 
 
 class FeedbackOut(BaseModel):
