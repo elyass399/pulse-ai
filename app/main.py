@@ -4,7 +4,6 @@ Espone REST API per il frontend.
 """
 
 import os
-from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -79,12 +78,19 @@ def serve_frontend():
     if frontend_path:
         return FileResponse(frontend_path)
 
+    # Debug: mostra tutti i path provati
     cwd = os.getcwd()
     files_in_cwd = []
     try:
         files_in_cwd = os.listdir(cwd)
     except:
         pass
+
+    # Cerca ricorsivamente frontend/index.html
+    found_paths = []
+    for root, dirs, files in os.walk(cwd):
+        if "index.html" in files and "frontend" in root:
+            found_paths.append(os.path.join(root, "index.html"))
 
     html_debug = f"""<!DOCTYPE html>
 <html>
@@ -108,13 +114,44 @@ def serve_frontend():
         status = "YES" if info["exists"] else "NO"
         html_debug += f"<tr><td>{info['path']}</td><td>{status}</td></tr>"
 
-    html_debug += """
+    html_debug += f"""
     </table>
+    <h3>Found frontend/index.html recursively:</h3>
+    <ul>
+    """
+    for p in found_paths:
+        html_debug += f"<li>{p}</li>"
+    if not found_paths:
+        html_debug += "<li>NOT FOUND</li>"
+
+    html_debug += """
+    </ul>
 </body>
 </html>
     """
 
     return HTMLResponse(content=html_debug, status_code=404)
+
+
+# --- Debug endpoint ---
+
+@app.get("/debug/tree")
+def debug_tree():
+    """Mostra la struttura delle cartelle."""
+    cwd = os.getcwd()
+    tree = []
+
+    for root, dirs, files in os.walk(cwd):
+        level = root.replace(cwd, '').count(os.sep)
+        indent = ' ' * 2 * level
+        tree.append(f"{indent}{os.path.basename(root)}/")
+        subindent = ' ' * 2 * (level + 1)
+        for file in files[:10]:  # max 10 files per dir
+            tree.append(f"{subindent}{file}")
+        if len(files) > 10:
+            tree.append(f"{subindent}... ({len(files) - 10} more files)")
+
+    return {"cwd": cwd, "tree": tree}
 
 
 # --- Startup / Shutdown ---
